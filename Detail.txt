@@ -1,0 +1,111 @@
+================================================================================
+TOOL NAME: EseeCloud Raw Video Snatcher & Sanitizer Engine
+FILE PURPOSE: Complete System Specifications & Technical Architecture Documentation
+DEVELOPMENT ENVIRONMENT: Termux (Android Native / No-Root ARM Architecture)
+================================================================================
+
+1. OVERVIEW & OBJECTIVE
+--------------------------------------------------------------------------------
+This utility is an automated, lightweight network pipeline designed to run 
+entirely within the Termux terminal environment on Android. Its core purpose is 
+to bypass the need for heavy, resource-intensive third-party surveillance apps 
+by communicating directly with local network-connected EseeCloud security 
+cameras (typically listening on Port 80). 
+
+The tool establishes direct HTTP connections, pulls raw, unbuffered security 
+footage streams, and utilizes an optimized FFmpeg processing chain to sanitize 
+and convert proprietary video arrays into universally playable MP4 formats saved 
+directly to local mobile storage.
+
+2. CREDENTIAL & AUTHENTICATION CLARIFICATION
+--------------------------------------------------------------------------------
+This tool relies on standard HTTP Basic Authentication to access the camera's
+internal streaming endpoints. 
+
+* Default Target: Username `admin` with a completely BLANK/EMPTY password.
+* Implementation: This credential pair is encoded into the script using the 
+  hardcoded header string: `-H "Authorization: Basic YWRtaW46"`
+* How it works: In HTTP Basic Auth, credentials are formatted as `username:password` 
+  and converted to Base64. 
+  - "admin" + ":" + "" (blank) = `admin:`
+  - Converting `admin:` into Base64 results exactly in `YWRtaW46`.
+* Note: If a custom password has been set on the camera hardware, this Base64 
+  string must be updated to match the new `admin:your_password` values.
+
+3. CORE CAPABILITIES
+--------------------------------------------------------------------------------
+* Direct API Stream Fetching: Bypasses cloud servers to pull files directly 
+  from the local camera hardware, maximizing bandwidth and ensuring data privacy.
+* On-the-Fly Video Sanitization: Corrects stream timeline errors, generating 
+  missing metadata blocks so videos don't freeze or lag in mobile galleries.
+* Ultra-Fast ARM Optimization: Formulated specifically to run on mobile processors 
+  using minimal CPU cycles, preventing battery drainage during long downloads.
+
+4. UNDERLYING NETWORK MECHANICS
+--------------------------------------------------------------------------------
+The tool handles two primary modes of operation by hitting internal firmware 
+endpoints built into the EseeCloud camera system:
+
+A. LIVE SNATCHING MODE (`/livestream/11`)
+   - Initiates an HTTP request to the camera's live sub-stream channel.
+   - Passes the encoded default admin credential header to authenticate.
+   - Restricts data capture using a strict network timeout clock (`--max-time`).
+
+B. HISTORICAL PLAYBACK MODE (`/playback`)
+   - Queries the camera's internal MicroSD card database.
+   - Requires precise parameter strings: `channel` (camera index), `type` (stream 
+     quality), and dual timestamp blocks (`starttime` and `endtime`) formatted exactly 
+     as YYYYMMDDHHMMSS.
+
+5. THE FFmpeg SANITIZATION PIPELINE (HOW THE CODE WORKS)
+--------------------------------------------------------------------------------
+EseeCloud cameras encode video frames using modern HEVC (H.265) compression. Raw 
+HEVC pulled directly over HTTP lacks standard container headers, making it 
+unreadable to standard media players. 
+
+The tool feeds the raw stream into FFmpeg using this highly specific flag architecture:
+
+* `-f hevc` 
+  Forces the FFmpeg demuxer to manually interpret the incoming raw data array as a 
+  High-Efficiency Video Coding stream, skipping standard file-header verification.
+
+* `-c:v libx264`
+  Instructs the video encoder to re-mux/transcode the raw H.265 frames into the 
+  Advanced Video Coding (H.264) standard. This guarantees the final file can be 
+  opened natively by any Android gallery, video player, or web browser.
+
+* `-preset ultrafast`
+  Dials down the encoder's compression complexity to the absolute minimum. This shifting 
+  of weight ensures the conversion happens almost instantly in real-time, utilizing 
+  minimal hardware processing power.
+
+* `-fflags +genpts`
+  The most crucial sanitization flag. Raw network packets often suffer from dropped or 
+  corrupted Presentation Time Stamps (PTS). This flag commands FFmpeg to look at the 
+  actual sequence of frames and completely regenerate a clean timestamp timeline from 
+  scratch, eliminating video freezing, audio desync, and scrambling bugs.
+
+6. DATA PATH & STORAGE PIPELINE
+--------------------------------------------------------------------------------
+[Local EseeCloud Camera] 
+        │
+        ▼ (Raw HEVC Stream via curl over Port 80 using 'admin:' credentials)
+ [Termux Local Cache] (`live_raw.h265`)
+        │
+        ▼ (FFmpeg Core: Transcode + Generate PTS Timestamps)
+ [Android Shared Storage] (`/sdcard/Download/live_output.mp4`)
+        │
+        ▼ (Automatic Cleanup)
+ [Cache Purged] (`rm live_raw.h265`)
+
+7. DEPENDENCIES & SYSTEM ENVIRONMENT
+--------------------------------------------------------------------------------
+To run the operations documented in this file, the host system must be running 
+the latest Termux build with the following binary packages compiled and mapped to 
+the local environment path:
+- `curl`: Handles network handshakes, credentials, and raw packet fetching.
+- `ffmpeg`: Coordinates the media demuxing, decoding, re-indexing, and containerization.
+- `termux-setup-storage`: Bridges the isolated Termux environment sandbox to the 
+  shared user storage directory (`/sdcard/Download/`).
+
+================================================================================
